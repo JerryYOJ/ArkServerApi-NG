@@ -129,7 +129,6 @@
     <ClInclude Include="Core\Public\IHooks.h" />
     <ClInclude Include="Core\Public\ITrampoline.h" />
     <ClInclude Include="Core\Public\Logger\Logger.h" />
-    <ClInclude Include="Core\Public\Requests.h" />
     <ClInclude Include="Core\Public\Timer.h" />
     <ClInclude Include="Core\Public\Tools.h" />
   </ItemGroup>
@@ -151,7 +150,6 @@
     <ClCompile Include="Core\Private\Offsets.cpp" />
     <ClCompile Include="Core\Private\PDBReader\PDBReader.cpp" />
     <ClCompile Include="Core\Private\PluginManager\PluginManager.cpp" />
-    <ClCompile Include="Core\Private\Tools\Requests.cpp" />
     <ClCompile Include="Core\Private\Tools\Timer.cpp" />
     <ClCompile Include="Core\Private\Tools\Tools.cpp" />
     <ClCompile Include="Core\Private\Trampoline.cpp" />
@@ -182,7 +180,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <SpectreMitigation>false</SpectreMitigation>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
