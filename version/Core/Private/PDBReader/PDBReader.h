@@ -19,6 +19,14 @@ namespace API
 		          std::unordered_map<std::string, BitField>* bitfields_dump);
 
 	private:
+		// Serialization methods for caching
+		bool LoadFromCache(const std::wstring& cache_path, std::unordered_map<std::string, intptr_t>* offsets_dump,
+		                   std::unordered_map<std::string, BitField>* bitfields_dump);
+		void SaveToCache(const std::wstring& cache_path, const std::unordered_map<std::string, intptr_t>& offsets_dump,
+		                 const std::unordered_map<std::string, BitField>& bitfields_dump);
+		bool IsCacheValid(const std::wstring& pdb_path, const std::wstring& cache_path);
+
+		
 		static void LoadDataFromPdb(const std::wstring& /*path*/, IDiaDataSource** /*dia_source*/, IDiaSession**
 		                            /*session*/, IDiaSymbol** /*symbol*/);
 
@@ -31,6 +39,10 @@ namespace API
 		static std::string GetSymbolNameString(IDiaSymbol* /*symbol*/);
 		static uint32_t GetSymbolId(IDiaSymbol* /*symbol*/);
 		static void Cleanup(IDiaSymbol* /*symbol*/, IDiaSession* /*session*/, IDiaDataSource* /*source*/);
+
+		// Helper methods for serialization
+		static std::wstring GetCachePath(const std::wstring& pdb_path);
+		static std::time_t GetFileModificationTime(const std::wstring& file_path);
 
 		std::unordered_map<std::string, intptr_t>* offsets_dump_{nullptr};
 		std::unordered_map<std::string, BitField>* bitfields_dump_{nullptr};

@@ -436,6 +436,8 @@
     <ClInclude Include="Core\Private\Ark\Globals.h">
       <Filter>Core\Private\Ark</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Public\ITrampoline.h" />
+    <ClInclude Include="Core\Private\Trampoline.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="version.cpp" />
@@ -493,6 +495,7 @@
     <ClCompile Include="Core\Private\UE\UE.cpp">
       <Filter>Core\Private\UE</Filter>
     </ClCompile>
+    <ClCompile Include="Core\Private\Trampoline.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="version.def" />

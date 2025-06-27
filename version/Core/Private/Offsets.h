@@ -29,7 +29,6 @@ namespace API
 
 	private:
 		Offsets();
-		~Offsets() = default;
 
 		BitField GetBitFieldInternal(const void* base, const std::string& name);
 

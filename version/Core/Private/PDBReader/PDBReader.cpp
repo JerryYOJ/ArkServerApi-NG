@@ -1,6 +1,10 @@
 #include "PDBReader.h"
 
 #include <fstream>
+#include <filesystem>
+#include <ctime>
+#include <chrono>
+#include <sys/stat.h>
 
 #include <Logger/Logger.h>
 #include <Tools.h>
@@ -51,6 +55,16 @@ namespace API
 		if (!f.good())
 			throw std::runtime_error("Failed to open pdb file");
 
+		// Try to load from cache first
+		const std::wstring cache_path = GetCachePath(path);
+		if (IsCacheValid(path, cache_path) && LoadFromCache(cache_path, offsets_dump, bitfields_dump))
+		{
+			Log::GetLog()->info("Successfully loaded PDB data from cache");
+			return;
+		}
+
+		Log::GetLog()->info("Cache not found or invalid, reading from PDB file...");
+
 		IDiaDataSource* data_source;
 		IDiaSession* dia_session;
 		IDiaSymbol* symbol;
@@ -75,6 +89,17 @@ namespace API
 		DumpGlobalVariables(symbol);
 
 		Cleanup(symbol, dia_session, data_source);
+
+		// Save to cache for next time
+		try
+		{
+			SaveToCache(cache_path, *offsets_dump, *bitfields_dump);
+			Log::GetLog()->info("Successfully saved PDB data to cache");
+		}
+		catch (const std::exception& e)
+		{
+			Log::GetLog()->warn("Failed to save cache: {}", e.what());
+		}
 
 		Log::GetLog()->info("Successfully read information from PDB\n");
 	}
@@ -372,5 +397,133 @@ namespace API
 			source->Release();
 
 		CoUninitialize();
+	}
+
+	bool PdbReader::LoadFromCache(const std::wstring& cache_path, std::unordered_map<std::string, intptr_t>* offsets_dump,
+	                              std::unordered_map<std::string, BitField>* bitfields_dump)
+	{
+		try
+		{
+			std::ifstream cache_file(cache_path);
+			if (!cache_file.is_open())
+				return false;
+
+			nlohmann::json cache_json;
+			cache_file >> cache_json;
+
+			// Load offsets
+			if (cache_json.contains("offsets"))
+			{
+				for (const auto& [key, value] : cache_json["offsets"].items())
+				{
+					(*offsets_dump)[key] = value.get<intptr_t>();
+				}
+			}
+
+			// Load bitfields
+			if (cache_json.contains("bitfields"))
+			{
+				for (const auto& [key, value] : cache_json["bitfields"].items())
+				{
+					BitField bf;
+					bf.offset = value["offset"].get<DWORD64>();
+					bf.bit_position = value["bit_position"].get<DWORD>();
+					bf.num_bits = value["num_bits"].get<ULONGLONG>();
+					bf.length = value["length"].get<ULONGLONG>();
+					(*bitfields_dump)[key] = bf;
+				}
+			}
+
+			return true;
+		}
+		catch (const std::exception&)
+		{
+			return false;
+		}
+	}
+
+	void PdbReader::SaveToCache(const std::wstring& cache_path, const std::unordered_map<std::string, intptr_t>& offsets_dump,
+	                            const std::unordered_map<std::string, BitField>& bitfields_dump)
+	{
+		nlohmann::json cache_json;
+
+		// Save offsets
+		cache_json["offsets"] = nlohmann::json::object();
+		for (const auto& [key, value] : offsets_dump)
+		{
+			cache_json["offsets"][key] = value;
+		}
+
+		// Save bitfields
+		cache_json["bitfields"] = nlohmann::json::object();
+		for (const auto& [key, value] : bitfields_dump)
+		{
+			cache_json["bitfields"][key] = {
+				{"offset", value.offset},
+				{"bit_position", value.bit_position},
+				{"num_bits", value.num_bits},
+				{"length", value.length}
+			};
+		}
+
+		// Create directory if it doesn't exist
+		std::filesystem::path cache_dir = std::filesystem::path(cache_path).parent_path();
+		if (!cache_dir.empty())
+		{
+			std::filesystem::create_directories(cache_dir);
+		}
+
+		// Write to file
+		std::ofstream cache_file(cache_path);
+		if (!cache_file.is_open())
+		{
+			throw std::runtime_error("Failed to create cache file");
+		}
+
+		cache_file << cache_json.dump(2);
+	}
+
+	bool PdbReader::IsCacheValid(const std::wstring& pdb_path, const std::wstring& cache_path)
+	{
+		try
+		{
+			// Check if cache file exists
+			if (!std::filesystem::exists(cache_path))
+				return false;
+
+			// Compare modification times
+			std::time_t pdb_time = GetFileModificationTime(pdb_path);
+			std::time_t cache_time = GetFileModificationTime(cache_path);
+
+			// Cache is valid if it's newer than the PDB file
+			return cache_time >= pdb_time;
+		}
+		catch (const std::exception&)
+		{
+			return false;
+		}
+	}
+
+	std::wstring PdbReader::GetCachePath(const std::wstring& pdb_path)
+	{
+		std::filesystem::path pdb_file_path(pdb_path);
+		std::wstring cache_filename = pdb_file_path.stem().wstring() + L".cache.json";
+		std::filesystem::path cache_path = pdb_file_path.parent_path() / cache_filename;
+		return cache_path.wstring();
+	}
+
+	std::time_t PdbReader::GetFileModificationTime(const std::wstring& file_path)
+	{
+		try
+		{
+			auto ftime = std::filesystem::last_write_time(file_path);
+			auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+				ftime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+			return std::chrono::system_clock::to_time_t(sctp);
+		}
+		catch (const std::exception&)
+		{
+			return 0;
+		}
 	}
 } // namespace API
