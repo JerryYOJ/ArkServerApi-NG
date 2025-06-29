@@ -112,8 +112,14 @@ namespace API
 				// Loads the new .dll.ArkApi if it exists on startup as well
 				if (fs::exists(new_full_dll_path))
 				{
-					copy_file(new_full_dll_path, full_dll_path, fs::copy_options::overwrite_existing);
-					fs::remove(new_full_dll_path);
+					try {
+						copy_file(new_full_dll_path, full_dll_path, fs::copy_options::overwrite_existing);
+						fs::remove(new_full_dll_path);
+					}
+					catch (const std::exception& error) {
+						Log::GetLog()->warn("{}\n({}) Race condition hit! Waiting for other to finish", error.what(), __FUNCTION__);
+						while (fs::exists(new_full_dll_path))Sleep(1000);
+					}
 				}
 
 				std::stringstream stream;
@@ -172,7 +178,11 @@ namespace API
 			throw std::runtime_error("Plugin " + plugin_name + " requires newer API version!");
 		}
 
-		HINSTANCE h_module = LoadLibraryA(full_dll_path.c_str());
+		HINSTANCE h_module = nullptr;
+		for (int retry = 1; retry <= 5, h_module == nullptr; retry++) {
+			h_module = LoadLibraryA(full_dll_path.c_str());
+			Sleep(100);
+		}
 		if (h_module == nullptr)
 		{
 			throw std::runtime_error(
@@ -221,12 +231,11 @@ namespace API
 			pfn_unload();
 		}
 
-		const BOOL result = FreeLibrary((*iter)->h_module);
-		if (result == 0)
-		{
-			throw std::runtime_error(
-				"Failed to unload plugin - " + plugin_name + "\nError code: " + std::to_string(GetLastError()));
-		}
+		using LdrUnloadDll_ = BOOL(*)(HMODULE);
+		static LdrUnloadDll_ LdrUnloadDll = (LdrUnloadDll_)GetProcAddress(GetModuleHandleA("ntdll"), "LdrUnloadDll");
+		const BOOL result = LdrUnloadDll((*iter)->h_module);
+		
+		Log::GetLog()->info("({}) Unloaded {} code: {}", __FUNCTION__, plugin_name, result);
 
 		loaded_plugins_.erase(remove(loaded_plugins_.begin(), loaded_plugins_.end(), *iter), loaded_plugins_.end());
 	}
@@ -354,8 +363,16 @@ namespace API
 				{
 					UnloadPlugin(filename);
 
-					copy_file(new_plugin_file_path, plugin_file_path, fs::copy_options::overwrite_existing);
-					fs::remove(new_plugin_file_path);
+					Sleep(2000);
+
+					try {
+						copy_file(new_plugin_file_path, plugin_file_path, fs::copy_options::overwrite_existing);
+						fs::remove(new_plugin_file_path);
+					}
+					catch (const std::exception& error) {
+						Log::GetLog()->warn("{}\n({}) Race condition hit! Waiting for other to finish", error.what(), __FUNCTION__);
+						while (fs::exists(new_plugin_file_path)) Sleep(1000);
+					}
 
 					// Wait 1 second before loading to let things clean up correctly...
 					// This will load the plugin in the next timer callback
