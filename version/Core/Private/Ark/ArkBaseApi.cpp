@@ -52,7 +52,7 @@ namespace API
 
 		Offsets::Get().Init(move(offsets_dump), move(bitfields_dump));
 
-		Trampoline::Get().create(static_cast<size_t>(1) << 7);
+		Trampoline::Get().create(static_cast<size_t>(1) << 10);
 
 		ArkApi::InitHooks();
 
