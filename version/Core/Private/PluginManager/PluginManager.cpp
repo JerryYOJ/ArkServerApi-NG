@@ -118,7 +118,17 @@ namespace API
 					}
 					catch (const std::exception& error) {
 						Log::GetLog()->warn("{}\n({}) Race condition hit! Waiting for other to finish", error.what(), __FUNCTION__);
-						while (fs::exists(new_full_dll_path))Sleep(1000);
+						while (fs::exists(new_full_dll_path)) {
+							int sleep = rand() % 1000;
+							Sleep(sleep);
+							try {
+								copy_file(new_full_dll_path, full_dll_path, fs::copy_options::overwrite_existing);
+								fs::remove(new_full_dll_path);
+							}
+							catch (...) {
+								continue;
+							}
+						}
 					}
 				}
 

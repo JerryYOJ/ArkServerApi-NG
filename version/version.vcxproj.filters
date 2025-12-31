@@ -352,9 +352,6 @@
     <ClInclude Include="Core\Public\API\UE\GenericPlatform\GenericPlatformAtomics.h">
       <Filter>Core\Public\API\UE\GenericPlatform</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Public\Requests.h">
-      <Filter>Core\Public</Filter>
-    </ClInclude>
     <ClInclude Include="Core\Private\IBaseApi.h">
       <Filter>Core\Private</Filter>
     </ClInclude>
@@ -437,7 +434,9 @@
       <Filter>Core\Private\Ark</Filter>
     </ClInclude>
     <ClInclude Include="Core\Public\ITrampoline.h" />
-    <ClInclude Include="Core\Private\Trampoline.h" />
+    <ClInclude Include="Core\Private\Trampoline.h">
+      <Filter>Core\Private</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="version.cpp" />
@@ -461,9 +460,6 @@
     </ClCompile>
     <ClCompile Include="Core\Private\Helpers.cpp">
       <Filter>Core\Private</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Private\Tools\Requests.cpp">
-      <Filter>Core\Private\Tools</Filter>
     </ClCompile>
     <ClCompile Include="Core\Private\Tools\Tools.cpp">
       <Filter>Core\Private\Tools</Filter>
@@ -495,7 +491,9 @@
     <ClCompile Include="Core\Private\UE\UE.cpp">
       <Filter>Core\Private\UE</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Private\Trampoline.cpp" />
+    <ClCompile Include="Core\Private\Trampoline.cpp">
+      <Filter>Core\Private</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="version.def" />
