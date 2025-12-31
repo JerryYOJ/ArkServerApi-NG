@@ -371,7 +371,17 @@ namespace API
 					}
 					catch (const std::exception& error) {
 						Log::GetLog()->warn("{}\n({}) Race condition hit! Waiting for other to finish", error.what(), __FUNCTION__);
-						while (fs::exists(new_plugin_file_path)) Sleep(1000);
+						while (fs::exists(new_plugin_file_path)) {
+							int sleep = rand() % 1000;
+							Sleep(sleep);
+							try {
+								copy_file(new_plugin_file_path, plugin_file_path, fs::copy_options::overwrite_existing);
+								fs::remove(new_plugin_file_path);
+							}
+							catch (...) {
+								continue;
+							}
+						}
 					}
 
 					// Wait 1 second before loading to let things clean up correctly...

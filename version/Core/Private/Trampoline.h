@@ -3,6 +3,8 @@
 #include <ITrampoline.h>
 #include <functional>
 #include <map>
+#include <vector>
+#include <array>
 
 #undef min
 #undef max
@@ -12,6 +14,14 @@ namespace API {
 	{
 	public:
 		using deleter_type = std::function<void(void* a_mem, std::size_t a_size)>;
+
+		struct HookEntry
+		{
+			std::array<std::uint8_t, 6> originalBytes;
+			std::byte* trampolineAddr;
+			std::size_t trampolineSize;
+			std::size_t size;
+		};
 
 		Trampoline() = default;
 		Trampoline(const Trampoline&) = delete;
@@ -78,38 +88,37 @@ namespace API {
 		[[nodiscard]] constexpr std::size_t allocated_size() const noexcept { return _size; }
 		[[nodiscard]] constexpr std::size_t free_size() const noexcept { return _capacity - _size; }
 
-		// Implement explicit virtual functions
 		std::uintptr_t write_branch_5(std::uintptr_t a_src, std::uintptr_t a_dst) override
 		{
-			// E9 cd
-			// JMP rel32
 			return write_branch<5>(a_src, a_dst, 0xE9);
 		}
 
 		std::uintptr_t write_branch_6(std::uintptr_t a_src, std::uintptr_t a_dst) override
 		{
-			// FF /4
-			// JMP r/m64
 			return write_branch<6>(a_src, a_dst, 0x25);
 		}
 
 		std::uintptr_t write_call_5(std::uintptr_t a_src, std::uintptr_t a_dst) override
 		{
-			// E8 cd
-			// CALL rel32
 			return write_branch<5>(a_src, a_dst, 0xE8);
 		}
 
 		std::uintptr_t write_call_6(std::uintptr_t a_src, std::uintptr_t a_dst) override
 		{
-			// FF /2
-			// CALL r/m64
 			return write_branch<6>(a_src, a_dst, 0x15);
+		}
+
+		bool unhook(std::uintptr_t a_src);
+
+		[[nodiscard]] bool is_hooked(std::uintptr_t a_src) const
+		{
+			return _hooks.find(a_src) != _hooks.end();
 		}
 
 	private:
 		[[nodiscard]] void* do_create(std::size_t a_size, std::uintptr_t a_address);
 		[[nodiscard]] void* do_allocate(std::size_t a_size);
+		void do_free(void* a_mem, std::size_t a_size);
 
 		void write_5branch(std::uintptr_t a_src, std::uintptr_t a_dst, std::uint8_t a_opcode);
 		void write_6branch(std::uintptr_t a_src, std::uintptr_t a_dst, std::uint8_t a_modrm);
@@ -121,6 +130,13 @@ namespace API {
 			const auto disp = reinterpret_cast<std::int32_t*>(a_src + N - 4);
 			const auto nextOp = a_src + N;
 			const auto func = isNop ? 0 : nextOp + *disp;
+
+			if (_hooks.find(a_src) == _hooks.end()) {
+				HookEntry entry{};
+				entry.size = N;
+				std::memcpy(entry.originalBytes.data(), reinterpret_cast<void*>(a_src), N);
+				_hooks.emplace(a_src, entry);
+			}
 
 			if constexpr (N == 5) {
 				write_5branch(a_src, a_dst, a_data);
@@ -137,10 +153,9 @@ namespace API {
 
 		void move_from(Trampoline&& a_rhs)
 		{
-			_5branches = std::move(a_rhs._5branches);
-			_6branches = std::move(a_rhs._6branches);
+			_hooks = std::move(a_rhs._hooks);
+			_freeList = std::move(a_rhs._freeList);
 			_name = std::move(a_rhs._name);
-
 			_deleter = std::move(a_rhs._deleter);
 
 			_data = a_rhs._data;
@@ -169,18 +184,24 @@ namespace API {
 				_deleter(_data, _capacity);
 			}
 
-			_5branches.clear();
-			_6branches.clear();
+			_hooks.clear();
+			_freeList.clear();
 			_data = nullptr;
 			_capacity = 0;
 			_size = 0;
 		}
 
-		std::map<std::uintptr_t, std::byte*> _5branches;
-		std::map<std::uintptr_t, std::byte*> _6branches;
+		struct FreeBlock
+		{
+			std::byte* addr;
+			std::size_t size;
+		};
+
+		std::map<std::uintptr_t, HookEntry>  _hooks;
+		std::vector<FreeBlock>               _freeList;
 		std::string                          _name{ "Default Trampoline" };
 		deleter_type                         _deleter;
-		std::byte* _data{ nullptr };
+		std::byte*                           _data{ nullptr };
 		std::size_t                          _capacity{ 0 };
 		std::size_t                          _size{ 0 };
 	};

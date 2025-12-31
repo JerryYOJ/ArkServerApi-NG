@@ -14,6 +14,9 @@ namespace ArkApi {
 		virtual std::uintptr_t write_branch_6(std::uintptr_t a_src, std::uintptr_t a_dst) = 0;
 		virtual std::uintptr_t write_call_5(std::uintptr_t a_src, std::uintptr_t a_dst) = 0;
 		virtual std::uintptr_t write_call_6(std::uintptr_t a_src, std::uintptr_t a_dst) = 0;
+		// 卸载指定地址的 hook，恢复原始字节
+		virtual bool unhook(std::uintptr_t a_src) = 0;
+		virtual [[nodiscard]] bool is_hooked(std::uintptr_t a_src) const = 0;
 		
 		// Template convenience functions (non-virtual)
 		template <std::size_t N>

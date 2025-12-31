@@ -1,4 +1,3 @@
-
 #include <API/Base.h>
 #include "Trampoline.h"
 
@@ -124,6 +123,16 @@ void* API::Trampoline::do_create(std::size_t a_size, std::uintptr_t a_address)
 
 void* API::Trampoline::do_allocate(std::size_t a_size)
 {
+	// 先从空闲列表中查找合适的块
+	for (auto it = _freeList.begin(); it != _freeList.end(); ++it) {
+		if (it->size >= a_size) {
+			void* mem = it->addr;
+			_freeList.erase(it);
+			return mem;
+		}
+	}
+
+	// 空闲列表中没有合适的块，从末尾分配
 	if (a_size > free_size()) {
 		Log::GetLog()->critical("Failed to handle allocation request");
 		while (!IsDebuggerPresent());
@@ -136,49 +145,76 @@ void* API::Trampoline::do_allocate(std::size_t a_size)
 	return mem;
 }
 
+void API::Trampoline::do_free(void* a_mem, std::size_t a_size)
+{
+	// 用 INT3 填充已释放的内存
+	constexpr auto INT3 = static_cast<std::uint8_t>(0xCC);
+	std::memset(a_mem, INT3, a_size);
+
+	// 添加到空闲列表
+	_freeList.push_back({ static_cast<std::byte*>(a_mem), a_size });
+}
+
+bool API::Trampoline::unhook(std::uintptr_t a_src)
+{
+	auto it = _hooks.find(a_src);
+	if (it == _hooks.end()) {
+		Log::GetLog()->warn("unhook: no hook found at address 0x{:X}", a_src);
+		return false;
+	}
+
+	const auto& entry = it->second;
+
+	DWORD oldProtect;
+	if (!VirtualProtect(reinterpret_cast<void*>(a_src), entry.size, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+		Log::GetLog()->error("unhook: VirtualProtect failed with code: 0x{:08X}", GetLastError());
+		return false;
+	}
+
+	std::memcpy(reinterpret_cast<void*>(a_src), entry.originalBytes.data(), entry.size);
+	VirtualProtect(reinterpret_cast<void*>(a_src), entry.size, oldProtect, &oldProtect);
+
+	// 释放 trampoline 内存供后续使用
+	do_free(entry.trampolineAddr, entry.trampolineSize);
+
+	_hooks.erase(it);
+
+	Log::GetLog()->debug("unhook: successfully removed hook at address 0x{:X}", a_src);
+	return true;
+}
+
 void API::Trampoline::write_5branch(std::uintptr_t a_src, std::uintptr_t a_dst, std::uint8_t a_opcode)
 {
 #pragma pack(push, 1)
 	struct SrcAssembly
 	{
-		// jmp/call [rip + imm32]
-		std::uint8_t opcode;  // 0 - 0xE9/0xE8
-		std::int32_t disp;    // 1
+		std::uint8_t opcode;
+		std::int32_t disp;
 	};
-	static_assert(offsetof(SrcAssembly, opcode) == 0x0);
-	static_assert(offsetof(SrcAssembly, disp) == 0x1);
 	static_assert(sizeof(SrcAssembly) == 0x5);
 
-	// FF /4
-	// JMP r/m64
 	struct TrampolineAssembly
 	{
-		// jmp [rip]
-		std::uint8_t  jmp;    // 0 - 0xFF
-		std::uint8_t  modrm;  // 1 - 0x25
-		std::int32_t  disp;   // 2 - 0x00000000
-		std::uint64_t addr;   // 6 - [rip]
+		std::uint8_t  jmp;
+		std::uint8_t  modrm;
+		std::int32_t  disp;
+		std::uint64_t addr;
 	};
-	static_assert(offsetof(TrampolineAssembly, jmp) == 0x0);
-	static_assert(offsetof(TrampolineAssembly, modrm) == 0x1);
-	static_assert(offsetof(TrampolineAssembly, disp) == 0x2);
-	static_assert(offsetof(TrampolineAssembly, addr) == 0x6);
 	static_assert(sizeof(TrampolineAssembly) == 0xE);
 #pragma pack(pop)
 
-	TrampolineAssembly* mem = nullptr;
-	if (const auto it = _5branches.find(a_dst); it != _5branches.end()) {
-		mem = reinterpret_cast<TrampolineAssembly*>(it->second);
-	}
-	else {
-		mem = allocate<TrampolineAssembly>();
-		_5branches.emplace(a_dst, reinterpret_cast<std::byte*>(mem));
+	auto mem = allocate<TrampolineAssembly>();
+
+	// 更新 hook 条目中的 trampoline 信息
+	if (auto hookIt = _hooks.find(a_src); hookIt != _hooks.end()) {
+		hookIt->second.trampolineAddr = reinterpret_cast<std::byte*>(mem);
+		hookIt->second.trampolineSize = sizeof(TrampolineAssembly);
 	}
 
 	const auto disp =
 		reinterpret_cast<const std::byte*>(mem) -
 		reinterpret_cast<const std::byte*>(a_src + sizeof(SrcAssembly));
-	if (!in_range(disp)) {  // the trampoline should already be in range, so this should never happen
+	if (!in_range(disp)) {
 		Log::GetLog()->critical("displacement is out of range");
 		while (!IsDebuggerPresent());
 		return;
@@ -187,7 +223,7 @@ void API::Trampoline::write_5branch(std::uintptr_t a_src, std::uintptr_t a_dst, 
 	SrcAssembly assembly;
 	assembly.opcode = a_opcode;
 	assembly.disp = static_cast<std::int32_t>(disp);
-	// Safe write with memory protection handling
+
 	DWORD oldProtect;
 	if (VirtualProtect(reinterpret_cast<void*>(a_src), sizeof(assembly), PAGE_EXECUTE_READWRITE, &oldProtect)) {
 		std::memcpy(reinterpret_cast<void*>(a_src), &assembly, sizeof(assembly));
@@ -205,30 +241,25 @@ void API::Trampoline::write_6branch(std::uintptr_t a_src, std::uintptr_t a_dst, 
 #pragma pack(push, 1)
 	struct Assembly
 	{
-		// jmp/call [rip + imm32]
-		std::uint8_t opcode;  // 0 - 0xFF
-		std::uint8_t modrm;   // 1 - 0x25/0x15
-		std::int32_t disp;    // 2
+		std::uint8_t opcode;
+		std::uint8_t modrm;
+		std::int32_t disp;
 	};
-	static_assert(offsetof(Assembly, opcode) == 0x0);
-	static_assert(offsetof(Assembly, modrm) == 0x1);
-	static_assert(offsetof(Assembly, disp) == 0x2);
 	static_assert(sizeof(Assembly) == 0x6);
 #pragma pack(pop)
 
-	std::uintptr_t* mem = nullptr;
-	if (const auto it = _6branches.find(a_dst); it != _6branches.end()) {
-		mem = reinterpret_cast<std::uintptr_t*>(it->second);
-	}
-	else {
-		mem = allocate<std::uintptr_t>();
-		_6branches.emplace(a_dst, reinterpret_cast<std::byte*>(mem));
+	auto mem = allocate<std::uintptr_t>();
+
+	// 更新 hook 条目中的 trampoline 信息
+	if (auto hookIt = _hooks.find(a_src); hookIt != _hooks.end()) {
+		hookIt->second.trampolineAddr = reinterpret_cast<std::byte*>(mem);
+		hookIt->second.trampolineSize = sizeof(std::uintptr_t);
 	}
 
 	const auto disp =
 		reinterpret_cast<const std::byte*>(mem) -
 		reinterpret_cast<const std::byte*>(a_src + sizeof(Assembly));
-	if (!in_range(disp)) {  // the trampoline should already be in range, so this should never happen
+	if (!in_range(disp)) {
 		Log::GetLog()->critical("displacement is out of range");
 		while (!IsDebuggerPresent());
 	}
@@ -237,7 +268,7 @@ void API::Trampoline::write_6branch(std::uintptr_t a_src, std::uintptr_t a_dst, 
 	assembly.opcode = static_cast<std::uint8_t>(0xFF);
 	assembly.modrm = a_modrm;
 	assembly.disp = static_cast<std::int32_t>(disp);
-	// Safe write with memory protection handling
+
 	DWORD oldProtect;
 	if (VirtualProtect(reinterpret_cast<void*>(a_src), sizeof(assembly), PAGE_EXECUTE_READWRITE, &oldProtect)) {
 		std::memcpy(reinterpret_cast<void*>(a_src), &assembly, sizeof(assembly));
