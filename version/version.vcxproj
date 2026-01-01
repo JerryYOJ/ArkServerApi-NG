@@ -28,7 +28,6 @@
     <ClInclude Include="Core\Private\Offsets.h" />
     <ClInclude Include="Core\Private\PDBReader\PDBReader.h" />
     <ClInclude Include="Core\Private\PluginManager\PluginManager.h" />
-    <ClInclude Include="Core\Private\Trampoline.h" />
     <ClInclude Include="Core\Public\API\ARK\Actor.h" />
     <ClInclude Include="Core\Public\API\ARK\Ark.h" />
     <ClInclude Include="Core\Public\API\ARK\Enums.h" />
@@ -50,6 +49,7 @@
     <ClInclude Include="Core\Public\API\Base.h" />
     <ClInclude Include="Core\Public\API\Enums.h" />
     <ClInclude Include="Core\Public\API\Fields.h" />
+    <ClInclude Include="Core\Public\API\Trampoline.h" />
     <ClInclude Include="Core\Public\API\UE\BasicTypes.h" />
     <ClInclude Include="Core\Public\API\UE\Containers\Algo\BinarySearch.h" />
     <ClInclude Include="Core\Public\API\UE\Containers\Algo\Impl\BinaryHeap.h" />
@@ -127,7 +127,6 @@
     <ClInclude Include="Core\Public\IApiUtils.h" />
     <ClInclude Include="Core\Public\ICommands.h" />
     <ClInclude Include="Core\Public\IHooks.h" />
-    <ClInclude Include="Core\Public\ITrampoline.h" />
     <ClInclude Include="Core\Public\Logger\Logger.h" />
     <ClInclude Include="Core\Public\Timer.h" />
     <ClInclude Include="Core\Public\Tools.h" />
@@ -152,11 +151,11 @@
     <ClCompile Include="Core\Private\PluginManager\PluginManager.cpp" />
     <ClCompile Include="Core\Private\Tools\Timer.cpp" />
     <ClCompile Include="Core\Private\Tools\Tools.cpp" />
-    <ClCompile Include="Core\Private\Trampoline.cpp" />
     <ClCompile Include="Core\Private\UE\UE.cpp" />
     <ClCompile Include="version.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Core\Public\API\Trampoline.inl" />
     <None Include="packages.config" />
     <None Include="version.def" />
   </ItemGroup>

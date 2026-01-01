@@ -6,7 +6,6 @@
 
 #include "API/UE/Math/ColorList.h"
 #include "../Offsets.h"
-#include "../Trampoline.h"
 #include "../PDBReader/PDBReader.h"
 #include "../PluginManager/PluginManager.h"
 #include "../Hooks.h"
@@ -51,8 +50,6 @@ namespace API
 		}
 
 		Offsets::Get().Init(move(offsets_dump), move(bitfields_dump));
-
-		Trampoline::Get().create(static_cast<size_t>(1) << 10);
 
 		ArkApi::InitHooks();
 

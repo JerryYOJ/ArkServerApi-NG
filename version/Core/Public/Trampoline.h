@@ -1,16 +1,39 @@
 #pragma once
 
-#include <ITrampoline.h>
 #include <functional>
 #include <map>
 #include <vector>
 #include <array>
+#include <windows.h>
+#include <memoryapi.h>
+#include <sysinfoapi.h>
 
 #undef min
 #undef max
 
-namespace API {
-	class Trampoline : public ArkApi::ITrampoline
+namespace ArkApi {
+	namespace detail
+	{
+		[[nodiscard]] constexpr std::size_t roundup(std::size_t a_number, std::size_t a_multiple) noexcept
+		{
+			if (a_multiple == 0)
+				return 0;
+
+			const auto remainder = a_number % a_multiple;
+			return (remainder == 0) ? a_number : (a_number + a_multiple - remainder);
+		}
+
+		[[nodiscard]] constexpr std::size_t rounddown(std::size_t a_number, std::size_t a_multiple) noexcept
+		{
+			if (a_multiple == 0)
+				return 0;
+
+			const auto remainder = a_number % a_multiple;
+			return (remainder == 0) ? a_number : (a_number - remainder);
+		}
+	}
+
+	class Trampoline
 	{
 	public:
 		using deleter_type = std::function<void(void* a_mem, std::size_t a_size)>;
@@ -30,7 +53,8 @@ namespace API {
 
 		explicit Trampoline(std::string_view a_name) :
 			_name(a_name)
-		{}
+		{
+		}
 
 		~Trampoline() { release(); }
 
@@ -88,22 +112,58 @@ namespace API {
 		[[nodiscard]] constexpr std::size_t allocated_size() const noexcept { return _size; }
 		[[nodiscard]] constexpr std::size_t free_size() const noexcept { return _capacity - _size; }
 
-		std::uintptr_t write_branch_5(std::uintptr_t a_src, std::uintptr_t a_dst) override
+		template <std::size_t N>
+		std::uintptr_t write_branch(std::uintptr_t a_src, std::uintptr_t a_dst) {
+			if constexpr (N == 5) {
+				return write_branch_5(a_src, a_dst);
+			}
+			else if constexpr (N == 6) {
+				return write_branch_6(a_src, a_dst);
+			}
+			else {
+				static_assert(N == 5 || N == 6, "Only 5 and 6 byte branches supported");
+			}
+		}
+
+		template <std::size_t N, class F>
+		std::uintptr_t write_branch(std::uintptr_t a_src, F a_dst) {
+			return write_branch<N>(a_src, reinterpret_cast<std::uintptr_t>(a_dst));
+		}
+
+		template <std::size_t N>
+		std::uintptr_t write_call(std::uintptr_t a_src, std::uintptr_t a_dst) {
+			if constexpr (N == 5) {
+				return write_call_5(a_src, a_dst);
+			}
+			else if constexpr (N == 6) {
+				return write_call_6(a_src, a_dst);
+			}
+			else {
+				static_assert(N == 5 || N == 6, "Only 5 and 6 byte calls supported");
+			}
+		}
+
+		template <std::size_t N, class F>
+		std::uintptr_t write_call(std::uintptr_t a_src, F a_dst) {
+			return write_call<N>(a_src, reinterpret_cast<std::uintptr_t>(a_dst));
+		}
+
+		std::uintptr_t write_branch_5(std::uintptr_t a_src, std::uintptr_t a_dst)
 		{
 			return write_branch<5>(a_src, a_dst, 0xE9);
 		}
 
-		std::uintptr_t write_branch_6(std::uintptr_t a_src, std::uintptr_t a_dst) override
+		std::uintptr_t write_branch_6(std::uintptr_t a_src, std::uintptr_t a_dst)
 		{
 			return write_branch<6>(a_src, a_dst, 0x25);
 		}
 
-		std::uintptr_t write_call_5(std::uintptr_t a_src, std::uintptr_t a_dst) override
+		std::uintptr_t write_call_5(std::uintptr_t a_src, std::uintptr_t a_dst)
 		{
 			return write_branch<5>(a_src, a_dst, 0xE8);
 		}
 
-		std::uintptr_t write_call_6(std::uintptr_t a_src, std::uintptr_t a_dst) override
+		std::uintptr_t write_call_6(std::uintptr_t a_src, std::uintptr_t a_dst)
 		{
 			return write_branch<6>(a_src, a_dst, 0x15);
 		}
@@ -201,8 +261,14 @@ namespace API {
 		std::vector<FreeBlock>               _freeList;
 		std::string                          _name{ "Default Trampoline" };
 		deleter_type                         _deleter;
-		std::byte*                           _data{ nullptr };
+		std::byte* _data{ nullptr };
 		std::size_t                          _capacity{ 0 };
 		std::size_t                          _size{ 0 };
 	};
+
+	inline Trampoline& GetTrampoline() {
+		return Trampoline::Get();
+	}
 }
+
+#include "Trampoline.inl"

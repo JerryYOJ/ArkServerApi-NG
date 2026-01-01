@@ -29,5 +29,5 @@
 #include "../../IApiUtils.h"
 #include "../../ICommands.h"
 #include "IHooks.h"
-#include "../../ITrampoline.h"
+#include "../../Trampoline.h"
 #include "Tools.h"
